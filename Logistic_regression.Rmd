@@ -1,0 +1,174 @@
+---
+title: "w5_lecture notes"
+output: html_document
+---
+
+```{r}
+require(tidyverse)
+classified_ads=read_csv('~/Dropbox/Pace/Courses/IS682/exercises/classified_ads/current_ads.csv')
+
+new_ads=read_csv('~/Dropbox/Pace/Courses/IS682/exercises/classified_ads/new_cars.csv')
+```
+
+### Predictive Task 
+
+Our goal is to predict the prices in the new dataset (new_ads).
+
+### Process
+- Build a model with historical data (classified_ads)
+
+`mymodel =  linear model ( model function  = price_euros ~ selected features,  training data = classified_ads )` 
+
+- Then predict the target values in the new dataset 
+
+`predicted prices =  predict ( mymodel,  new data = new_ads)`
+
+
+
+* Review historical data*
+```{r}
+names(classified_ads)
+classified_ads%>%head()
+nrow(classified_ads)
+```
+* Review new dataset *
+```{r}
+names(new_ads)
+new_ads%>%head()
+```
+
+* Important* The historical dataset and the new dataset must have the same structure. It means: 
+  - Target column have the same name  and  type in each dataset.
+  - Feature columns (input variables) have the same name and type in each dataset.
+
+
+#### Creating first Model
+```{r}
+my_model = lm( price_eur ~ mileage , data = classified_ads )
+
+summary(my_model)
+```
+
+#### Saving the model function as a variable 
+```{r}
+f = price_eur ~ mileage
+
+#lm( f , data= classified_ads)
+
+```
+
+#### Using broom's augment function to merge model outputs with data
+```{r}
+require(broom)
+
+augment(my_model ,classified_ads)%>%select(mileage, price_eur, .fitted, .resid, everything())
+```
+
+#### Extracting coefficients to create a prediction function 
+
+We need this only to make individual predictions. For predicting a multiple instance (as in all the price values in the new dataset), we will use predict function 
+```{r}
+(beta_zero=my_model$coefficients[1])
+(beta_one=my_model$coefficients[2])
+
+```
+
+- Prediction for the first car in the new dataset
+```{r}
+ 20080.27 + -0.07342887* 207000
+```
+
+- Prediction error (or residual)
+```{r}
+1300.11 - 4880.494
+```
+
+```{r}
+#ggplot(classified_ads, aes(x=mileage, y=price_eur )) +geom_point()
+```
+```{r}
+(beta_zero=my_model$coefficients[1])
+(beta_one=my_model$coefficients[2])
+
+```
+
+ - We can use mutate to create a column with predicted values. 
+```{r}
+new_ads%>%mutate(price_eur=beta_zero+beta_one*mileage)
+```
+
+
+-  But more formally we use the predict function as below. 
+```{r}
+predict(my_model, newdata = new_ads)
+```
+
+## Putting it all together 
+```{r}
+# Predict price by engine displacement 
+names(classified_ads)
+
+f= price_eur ~ engine_displacement
+
+my_model2<-lm(f, data=classified_ads)
+
+summary(my_model2)
+
+
+new_ads%>%mutate( price_eur=predict(my_model2, newdata = new_ads))
+
+```
+
+```{r}
+classified_ads%>%mutate(fitted_values=my_model$fitted.values)
+
+
+```
+
+### Model evaluation 
+- Instead of using model summary we can use modelr's rsquare function. This is handy espacially we want to see the model fit on datasets other than the one it was trained on. 
+```{r}
+require(modelr)
+rsquare(my_model,classified_ads)
+
+```
+
+
+## MODEL EVALUATION PROCESS
+
+We should evaluate models based on its performance on unobserved data. For this, we need to save some of the data for testing and not use in building (training) the model. We call the process train/test split.
+
+### Train Test Split
+
+Random split is the key
+
+```{r}
+n= nrow(classified_ads)
+
+
+set.seed(2333)
+training_row=runif(n)>.3
+training_data=classified_ads[training_row,]
+testing_data=classified_ads[!training_row,]
+
+
+# training_data=classified_ads%>%sample_frac(size = .7)
+# testing_data=anti_join(classified_ads,training_data ,by='id')
+```
+
+
+- Train the model on the training dataset
+```{r}
+f= price_eur ~ mileage
+model2=lm( f, training_data)
+rsquare(model2, training_data)
+```
+
+
+- Evaluate the model on the test data 
+```{r}
+testing_predictions=predict(model2, testing_data)
+
+rsquare(model2, testing_data)
+```
+
