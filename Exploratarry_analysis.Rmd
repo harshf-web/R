@@ -1,0 +1,120 @@
+---
+
+
+```{r echo=FALSE}
+#install.packages('kableExtra')
+
+require(knitr)
+library(kableExtra)
+```
+
+```{r message=FALSE}
+ 
+```
+
+## Classified ads: Understanding used cars and how cars are priced? 
+
+One of the biggest problems in selling/buying car is to determine the 'right' price for a car. It is usually hard to get the right value since there are many factors that effect the price. We want to help people determine the price of their car based on its characterstics (year, mileage etc.). But first we need to understand how features of a car impact the price. 
+
+So your first goal is to understand how used cars are priced. In other words, what characteristics of a car impact its sale price (and how).  You probably have some initution as to what can affect car prices but it is hard to know all aspects. We have a dataset of clasified ads of used cars. Each row is an ad for a used car. Ads include some variables for each car and the price of the car in Euros. We can explore the data to understand the factors that effect how the car is priced. This requires asking questions and answering them iteratively. But first, it is always a good practice to look at some descriptive statistics: 
+
+1. What is the price of a typical car? And what is the typical deviation from this value? How are the price values are distributed ? 
+```{r}
+
+```
+
+
+Then, we can explore our dataset more by looking at: 
+
+2. What is the range of the manufactured years ?
+
+```{r}
+range
+```
+
+
+3. how many manufactures are there  ?  
+
+4. What are the fuel types of the cars ? 
+
+
+(It is a good idea to look at every variable that you will use in your analysis)
+
+
+
+Once you know more about the variables in the dataset, you can start answering more directed questions about each variable. For example, we may think the age of a car is an important factor for the price of a car. In fact, we expect on average newer cars to be more expensive. Can we see that in our dataset ? First of all, you will need to identify the age of a car. We don't have an age variable but we can calculate . 
+
+7. Create a variable called age and calculate it as 2018 - manufacture year. 
+
+
+8. Let's explore the age variable 
+ - What is the age range?
+ - What is the typical price for a 5 year old car and 
+ - What is the typical price for a 15 year old car? 
+ - Based on the answers above, what can we say about the relationship with car price and car age.
+
+
+9. Based on your previous answer, would you agree that the lowest price average should be for the oldest cars? Let's see if this true. 
+
+ - First find the oldest age among cars.
+
+ - What price is for the oldest car?   Is it more or less expansive than a 5 year old car ? 
+
+
+10. To better understand the relationship between the age of a car and the price, let's look at the price averages for each manufacture year. Try to replicate the table below (your table will probably be longer, the table below shows only first 6 rows of the actual table). **Hint** The table  *groups* the data by the age first than *summarizes* each group by the average price with in the group
+
+```{r echo=FALSE}
+
+ads%>%mutate( age = 2018 - manufacture_year)%>%
+      group_by(age)%>%summarise(mean(price_eur)) %>%
+      head(6)%>%
+      kable(align = 'l')%>%
+     kable_styling(bootstrap_options = "striped", full_width = F)
+```
+
+What does this table tell you ? Do we need to re-evaluate our assumption about younger cars always more expensive? 
+
+
+You can continue to look at othere dimensions (variables) of the data. 
+
+11. Which manufacturers on average produce the most expensive cars(look at the top 10 manufactures)? **Hint** You will need to  *group* the data by the manufacture then *summarize* each group by the average price. 
+```{r echo=FALSE}
+
+ads%>%group_by(maker)%>%summarise('average'=mean(price_eur)) %>% 
+      arrange(desc(average))%>%
+      head(10)%>%
+      kable(align = 'l')%>%
+     kable_styling(bootstrap_options = "striped", full_width = F)
+```
+
+12. Judging by the averages above, there seems to be a big difference between the (between lamborgini and bentley) averages.  
+  - How many Lamborghinis are there in the dataset?
+  
+- There seems to be a big drop in the prices between proche and bmw. How many cars are from 'lamborghini','bentley','maserati',or 'porsche'.  **Hint** This can be done in a few ways. You can filter based on `maker=='lamborghini' | maker=='bentley....` . 
+      Alternatively you can use %in%. 
+      `top_manuf=c('lamborghini','bentley','maserati','porsche')`
+      Filter based on :  `maker %in% top_manuf`
+   
+```{r echo=FALSE}
+filter(ads, maker%in%c('lamborghini','bentley','maserati','porsche'))
+```
+   
+
+
+
+13. How does transmission type effect the price ? Are manual cars or automatic cars more expensive ? 
+
+14. How does the fuel type affect the prices ? Which of the two are typically more expensive diesel cars or gasoline cars  ?  
+
+```{r eval=FALSE, echo=FALSE}
+
+
+ads%>% group_by(manufacture_year, fuel_type)%>%
+      summarise(pmean=mean(price_eur))%>% spread(fuel_type, pmean)%>% 
+      arrange(desc(manufacture_year))
+
+ads%>%group_by(manufacture_year, fuel_type)%>%
+    summarise(mean(price_eur))%>% spread(fuel_type, 'mean(price_eur)')
+head(ads)
+```
+
