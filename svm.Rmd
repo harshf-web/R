@@ -1,0 +1,99 @@
+---
+title: "w12_svm"
+author: "Yegin Genc"
+date: "5/3/2020"
+---
+
+```{r echo=FALSE, message=FALSE}
+require(tidyverse)
+```
+
+
+```{r}
+social_data=read_csv('social_ads.csv')
+social_data
+```
+
+# Data Prep
+```{r}
+
+sd_ready=social_data%>%select(-`User ID`)%>%
+                      mutate(Purchased=ifelse(Purchased==1, TRUE, FALSE))%>%
+                      mutate_if(is.numeric, scale)
+
+```
+
+
+## Split data
+
+```{r}
+set.seed(123)
+
+training=runif(nrow(sd_ready)) >.25
+train_sd=sd_ready[training, ]
+test_sd=sd_ready[!training, ]
+
+```
+
+
+## Create Model
+
+```{r}
+require(e1071)
+
+fm=formula('Purchased ~.')
+
+sd_classifier=svm(formula= fm ,
+                  data=train_sd,
+                  type='C-classification', 
+                  kernel='linear')
+
+sd_classifier
+```
+
+
+```{r}
+my_predictions=predict(sd_classifier, newdata=test_sd[,-4])
+```
+
+
+```{r}
+require(caret)
+
+confusionMatrix(my_predictions, reference=as.factor(test_sd$Purchased))
+```
+
+
+
+```{r}
+p_sd_classifier=svm(formula= fm ,
+                  data=train_sd,
+                  type='C-classification', 
+                  kernel='polynomial',
+                  cost=1
+                  )
+
+my_predictions2=predict(p_sd_classifier, newdata=test_sd[,-4])
+confusionMatrix(my_predictions2, reference=as.factor(test_sd$Purchased))
+
+```
+
+
+```{r}
+p_sd_classifier=svm(formula= fm ,
+                  data=train_sd,
+                  type='C-classification', 
+                  kernel='radial',
+                  cost=10
+                  )
+
+my_predictions2=predict(p_sd_classifier, newdata=test_sd[,-4])
+confusionMatrix(my_predictions2, reference=as.factor(test_sd$Purchased))
+
+```
+```
+
+```{r}
+??svm
+```
+
