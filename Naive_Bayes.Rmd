@@ -1,0 +1,105 @@
+---
+title: "Naive Bayes Lecture Notes"
+output: html_notebook
+---
+
+## Example 1 - Customer Churn
+```{r}
+require(tidyverse, quietly = TRUE)
+
+churn=read_csv('WA_Fn-UseC_-Telco-Customer-Churn.csv')
+```
+
+```{r}
+churn%>%head()
+```
+
+```{r}
+churn=churn%>%mutate(SeniorCitizen=as.character(SeniorCitizen))
+
+churn=churn%>%select(-customerID)
+
+churn%>%head()
+
+hist(churn$tenure)  #candidate for binning
+hist(churn$MonthlyCharges) #candidate for binning
+hist(sqrt(churn$TotalCharges))  # sqrt transformation
+
+
+churn2=churn%>%mutate(tenure=cut(tenure,3), MonthlyCharges=cut(MonthlyCharges,4) , TotalCharges=sqrt(TotalCharges))
+
+```
+
+
+```{r}
+library(e1071)
+library(caret)
+
+```
+
+### model building and evaluation 
+```{r}
+
+set.seed(1234)
+n=nrow(churn2)
+training=runif(n) >.3
+training_data=churn2[training,]
+testing_data=churn2[!training, ]
+
+
+nb_model=naiveBayes(training_data[,-20], as.factor(training_data$Churn), laplace=.1)
+
+predictions=predict(nb_model, testing_data[,-20])
+
+
+confusionMatrix(as.factor(predictions), as.factor(testing_data$Churn))
+
+
+
+raw_predictions=predict(nb_model, testing_data[,-20], type='raw')
+
+new_prediction= ifelse(raw_predictions[,2]>.3, 'Yes','No')
+confusionMatrix(as.factor(new_prediction), as.factor(testing_data$Churn))
+```
+
+## Example 2 - Spam
+
+```{r}
+require(tidyverse, quietly = TRUE)
+#sms_data=read_csv('https://raw.githubusercontent.com/PacktPublishing/Machine-Learning-with-R-Third-Edition/master/Chapter04/sms_spam.csv')
+sms_data=read_csv('sms_data.csv')
+```
+
+```{r}
+require(quanteda)
+require(quanteda.textmodels)
+```
+
+```{r}
+my_corpus=corpus(sms_data$text)
+summary(my_corpus)
+head(my_corpus)
+```
+
+```{r}
+my_dfm=dfm(my_corpus)
+my_dfm =dfm_weight(my_dfm, scheme = 'boolean')
+
+docvars(my_dfm,field='type')=sms_data$type
+docvars(my_dfm, field='training')=runif(nrow(sms_data))>.3
+
+training_dfm=dfm_subset(my_dfm, training==TRUE)
+testing_dfm=dfm_subset(my_dfm, training==FALSE)
+
+training_dfm
+testing_dfm
+```
+
+```{r}
+my_model=textmodel_nb(training_dfm, training_dfm$type, smooth=.1)
+predictions=predict(my_model, testing_dfm)
+
+
+confusionMatrix(predictions, as.factor(testing_dfm$type))
+```
+
