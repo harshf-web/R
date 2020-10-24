@@ -1,0 +1,325 @@
+---
+title: "DS2_Project_Final_Submission"
+author: "R-verse"
+date: "4/11/2020"
+output: html_document
+---
+
+
+
+```{r}
+
+#Loading up the required libraries
+
+library(readr)
+library(tidyquant)
+library(lubridate)
+library(naniar)
+library(RcppRoll)
+library(prophet)
+library(data.table)
+library(timetk)
+library(DataExplorer)
+library(stringr)
+library(forecast)
+library(scales)
+library(tidyverse)
+library(ggplot2)
+library(catboost)
+
+```
+
+##Loading up the datasets
+
+```{r}
+
+#Importing and reading the datasets from the working directory
+
+calendar <- read_csv("C:/Users/jibin/OneDrive/Desktop/Repositories/M5/Datasets/calendar.csv")
+
+View(calendar)
+
+train_ds <-read_csv("C:/Users/jibin/OneDrive/Desktop/Repositories/M5/Datasets/sales_train_validation.csv")
+
+View(train_ds)
+
+prices_ds <- read_csv("C:/Users/jibin/OneDrive/Desktop/Repositories/M5/Datasets/sell_prices.csv")
+
+View(prices_ds)
+
+```
+
+
+##Preprocessing and transforming the dataset along with few EDA questions and observations
+
+```{r}
+
+#Inspecting the datasets, checking the total number of variables and observations in each dataset
+
+(combined_dimensions <- data.frame(calendar = dim(calendar), sales = dim(prices_ds), train_dataset                                   =dim(train_ds), row.names = c("Observations", "Variables")))
+
+#Key observations: Sales for 1969 days are given, taining dataset has 30,490 products
+
+
+train_ds %>% head(10)
+
+#Levels on which products are aggregated:
+
+#State Level
+unique(train_ds$state_id)
+#Sales fro 3 states are given (California, Texas, Wisconsin)
+
+
+#Store Level
+unique(train_ds$store_id)
+#California has 4 stores, Texas has 3 stores and Wisconsin has 3 stores
+
+
+#Category Level
+unique(train_ds$cat_id)
+#Categories of product: Hobbies, Household, Foods
+
+#Department Level
+unique(train_ds$dept_id)
+#Hobbies has 2 departments, Household has 2 departments, Foods have 3 departments
+
+
+#Checking for missing values:
+
+## a)For Calendar Dataset
+
+gg_miss_var(calendar) + ylab("Number of missing values (NAs)") + theme_light()
+
+#NA values are present accross 4 variables in the calendar dataset
+
+#Strategy: The variables event_type_1 and event_type_2 denote the categories of the events. Hence dropping them as they are unnecessary and converting event_names 1 & 2 as strings to get rid of NA values. 
+
+#Reading files again fread function from data.table packkage 
+
+calendar_ds <- fread("C:/Users/jibin/OneDrive/Desktop/Repositories/M5/Datasets/calendar.csv", 
+                     stringsAsFactors = TRUE, 
+                     drop = c("date", "weekday", "event_type_1", "event_type_2")) %>% 
+                     rename("date_id"=wm_yr_wk)
+
+calendar_1 <- fread("C:/Users/jibin/OneDrive/Desktop/Repositories/M5/Datasets/calendar.csv", 
+                     stringsAsFactors = TRUE, 
+                     drop = c("date", "weekday", "event_type_1", "event_type_2")) 
+
+
+train <- fread("C:/Users/jibin/OneDrive/Desktop/Repositories/M5/Datasets/sales_train_validation.csv", 
+                stringsAsFactors = TRUE,drop = paste0("d_", 1:1000))
+
+prices <- fread("C:/Users/jibin/OneDrive/Desktop/Repositories/M5/Datasets/sell_prices.csv", 
+                 stringsAsFactors = TRUE)
+
+vis_miss(calendar_ds)
+
+#All NA values have been tranformed
+
+## b)For train dataset
+
+DataExplorer::profile_missing(train_ds) %>% arrange(desc(num_missing))
+
+#No NA values are present in the train dataset
+
+
+## c)For sales dataset
+
+DataExplorer::profile_missing(prices_ds) %>% arrange(desc(num_missing))
+
+#No NA values are present in the sales dataset
+
+#For train dataset, there are 1919 variables, out of which, the first 6 are product identification, remaining are its sales. So sales for 1913 days are given and we need to predict from days 1914 onwards
+
+#Reshaping the sales for 1913(using pivoting) days for visual representation
+
+train_ds_1 <- train_ds %>% pivot_longer(cols = starts_with("d_"),names_to = "d_id",values_to = "daily_sales")
+
+train_ds_1 %>% head(10)
+
+
+#Q: Which state has the highest sales?
+
+train_ds_1 %>% group_by(state_id,item_id) %>% summarise(total_sales=sum(daily_sales)) %>%   
+               ggplot(aes(x=state_id,y=total_sales)) + geom_col()
+
+#Ans: California has the highest states, a possible explanation is that it has 3 stores while the other states have only 2 stores
+
+
+#Q: Which is the most and least sold product?
+
+train_ds_1 %>% group_by(item_id,state_id) %>% summarise(total_sales=sum(daily_sales)) %>% 
+               arrange(desc(total_sales))%>% head(10) %>%  
+               ggplot(aes(x=item_id,y=total_sales,color=state_id,fill=state_id)) + geom_col() +  
+               coord_flip() 
+
+
+train_ds_1 %>% group_by(item_id,state_id) %>% summarise(total_sales=sum(daily_sales)) %>% 
+               arrange(desc(total_sales))%>% tail(10) %>%  
+               ggplot(aes(x=item_id,y=total_sales,color=state_id,fill=state_id)) + geom_col() +     
+               coord_flip() 
+
+#Ans: Item No:90 from FOODS_3 category is sold the most product whereas Item No:!30 from HOUSEHOLD_2 category is the least sold product
+
+
+everyday_sales <- train_ds[7:1919] #Sales for 1913 days are given
+
+#Summarizing sales for each day and joining it with the calendar dataset
+
+everyday_sales <- everyday_sales %>% summarize_all(sum) %>%  gather(key="d", value 
+                  ="total_daily_sales") %>% left_join(calendar[c("d", "date")], by="d") %>%
+                  mutate(date=as.Date(date))
+
+#Plotting time series of products sold daily
+
+everyday_sales %>% ggplot(aes(date, total_daily_sales)) + geom_line(color = "red") +    
+                   geom_smooth( method = "loess", color = "blue", span=1/8) +
+                   scale_y_continuous(labels = scales::label_number_si()) + 
+                   labs(x = 'date', y = 'unit sales') +
+                   scale_x_date(labels = date_format("%m-%Y"), date_breaks="5 months")
+
+#There seems to be a trend as sales fall just before the year starts
+
+#Q: Which day has the maximum sales?
+
+train_ds_2 <- train_ds_1 %>% left_join(calendar %>% 
+              select(d, date, weekday),by = c("d_id" = "d"))
+
+train_ds_2 %>% count(weekday, wt = daily_sales, name = "daily_sales") %>%
+               ggplot(aes(x = weekday, y = daily_sales, fill = weekday)) + geom_col() + labs(x = 
+               "Days", y = "Unit Sales") + scale_fill_manual(values=c("#800000", "#E69F00",    
+               "#56B4E9","#808000","#008080","#00008B","#2F4F4F"))
+
+#Ans: Sales are highest on Saturdays followed by Sundays and Fridays
+
+
+#Plotting time series of total products sold across the 3 categories
+
+train_ds_2 %>% count(cat_id, date, wt = daily_sales, name = "daily_sales",state_id) %>%
+               ggplot(aes(x = date, y = daily_sales, color = cat_id,stat="identity")) +           
+               facet_wrap(~state_id) + geom_line()+ geom_smooth(method = "loess",      
+               span=1/4,alpha=5) + scale_color_discrete(name="Categories")
+
+#Food is clearly the highest sold category in all 3 states & there is dip in sales across all categories and across all three states just before the start of a new year
+
+#Plotting time series of total products across departments
+
+train_ds_2 %>% count(dept_id, date, wt = daily_sales, name = "daily_sales",state_id) %>% 
+               ggplot(aes(x=date, y=daily_sales, colour=dept_id)) + geom_smooth() + labs(x = "date", y                ="daily_sales") + scale_color_discrete(name="Departments")
+
+#Food_3 department has comparatively way higher sales than other departments. Sales for Hobbies_2 has remained steady over the years whereas across all other departments, there has been a dip in sales from mid 2012 to early 2013 period 
+
+#Preparing data for the boosting models to be used
+
+#Total number of dyas for which sales are given is 1914
+
+#Forecast to made = 28 days
+
+total_days <- 1914 
+
+total_forecasts <- 28 
+
+#As explored in the analysis part, for calendar ds, event_type is not required since it can be represented using event_name. So dropping event_type_1 and event_type_2 and using the same calendar_ds as defined earlier
+
+calendar_ds %>% head(10)
+
+#Converting all d_values as series of number
+
+days_numbered <- function(x) {
+  
+  x %>% extract(d, into = "d", "([0-9]+)", convert = TRUE)
+
+  }
+
+
+# Defining a function to introduce lag and autocorrelation which would help the model determine pattern and trends
+
+#Using window fuction: lag to access previous and next values so that model can be trained for trends and patterns
+
+#Using roll_mean function from RcppRoll package to return moving average values.(Starting from the first week, to 28 days for which the forecats are to be made)
+
+
+key_features <- function(x) {
+                    
+  x %>% group_by(id) %>% mutate(lag_7 = dplyr::lag(key, 7), lag_28 = dplyr::lag(key, 28),
+                         roll_lag7_w7 = roll_meanr(lag_7, 7), roll_lag7_w28 = roll_meanr(lag_7, 28),
+                         roll_lag28_w7 = roll_meanr(lag_28, 7), roll_lag28_w28 = roll_meanr(lag_28,                            28)) %>% ungroup() 
+
+}
+
+#Creating new columns and adding null values to populate train for 1,969 days as the calendar dataset has 1,969 days
+
+train[, paste0("d_", total_days:(total_days + 2 * total_forecasts - 1))] <- NA
+
+#Selecting input for the model by keeping the products ids, its prices, unit sales and days of sales from the sales and calendar datasets respectively
+
+train <- train %>% mutate(id = gsub("_validation", "", id)) %>% gather("d", "key", -id,   
+           -item_id, -dept_id, -cat_id, -store_id, -state_id) %>% days_numbered() %>% 
+            left_join(calendar_1 %>% days_numbered(), by = "d") %>% 
+            left_join(prices, by = c("store_id", "item_id", "wm_yr_wk")) %>% select(-wm_yr_wk) %>% 
+            mutate(key = as.numeric(key)) %>% mutate_if(is.factor, as.integer) %>% 
+            key_features() %>% filter(d >= total_days | !is.na(roll_lag28_w28))
+
+#Defining the predictors and response variable
+
+y <- "key"
+x <- setdiff(colnames(train), c(y, "d", "id"))
+
+
+#Splitting the data as test and train
+
+#Test data is for last 28 days and test data is for first 1913 days
+
+train <- train %>% filter(d < total_days)
+
+test <- train %>% filter(d >= total_days - 56)
+
+	
+#Prepare a dataset for the model using the catboost.load_pool function:
+
+set.seed(3134)
+idx <- sample(nrow(train), trunc(0.3 * nrow(train)))
+valid <- catboost.load_pool(train[idx, x], label = train[[y]][idx])
+train <- catboost.load_pool(train[-idx, x], label = train[[y]][-idx])
+rm(prices, idx, calendar_1)
+invisible(gc())
+
+#Tuning the model wih appropriate parameters
+
+parameters <- list(iterations = 1000, metric_period = 100, loss_function = "RMSE",eval_metric ="RMSE",
+              random_strength = 0.7,depth = 10, learning_rate = 0.5, l2_leaf_reg = 0.1, random_seed =               123)
+
+best_fit <- catboost.train(train, valid, params = parameters)
+
+
+#Daily_Predictions
+
+for (day in total_days:(total_days + total_forecasts - 1)) {
+  cat(".")
+  test[test$d == day, y] <- test %>% 
+    filter(between(d, day - 56, day)) %>% 
+    demand_features() %>% 
+    filter(d == day) %>% 
+    select_at(x) %>% 
+    catboost.load_pool() %>% 
+    catboost.predict(fit, .) * 1.03 
+}
+
+# Creating the submission files as per the rules and given format
+
+submission <- test %>% mutate(id = paste(id, ifelse(d < total_days + total_forecasts, "validation",  
+              "evaluation"),sep = "_"),F = paste0("F", d - total_days + 1 - total_forecasts * (d >=  
+              total_days +total_forecasts))) %>% select(id, F, demand) %>% spread(F, demand, fill = 1)               %>% select_at(c("id",paste0("F", 1:total_forecasts)))
+
+
+#Exporting_Submissions
+
+write_csv(submission, path = "Submission_Take_15.csv")
+
+
+
+```
+
+
+
+
