@@ -1,0 +1,173 @@
+---
+title: "myproject"
+author: "Harsh Faterpekar"
+date: "18/11/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+require(tidyverse)
+require(ggplot2)
+```
+
+```{r}
+Coldcalls =read.csv('C:/Users/Ajit/Desktop/R/carinsurance_train.csv')
+Coldcalls
+install.packages('hms')
+require(tidyverse)
+library(tsfknn)
+library(modelr)
+```
+
+
+```{r}
+callend <- strptime(Coldcalls$CallEnd," %H:%M:%S")
+callstart <- strptime(Coldcalls$CallStart,"%H:%M:%S")
+
+Coldcalls$CallDuration<-as.numeric(difftime(callend,callstart,units = "secs"))
+Coldcalls$CallDuration
+head(Coldcalls)
+plot.ts(Coldcalls$CallDuration)
+```
+
+```{r}
+CallsNA = na.omit(Coldcalls)
+CallsNA
+
+```
+
+
+```{r}
+callsuccess = filter(Carinsurance, Outcome == 'success')
+callfailure = filter(Carinsurance, Outcome == 'failure')
+callother = filter(Carinsurance, Outcome == 'other')
+callother
+```
+
+```{r}
+summary(CallsNA)
+ ```
+
+```{r}
+summary(callfailure)
+summary(callsuccess)
+```
+
+
+```{r}
+mean(Coldcalls$CallDuration)
+mean(callsuccess$CallDuration)
+mean(callfailure$CallDuration)
+```
+
+
+
+
+```{r}
+ggplot(data = CallsNA)+geom_point(aes(x = NoOfContacts, y = CarInsurance, color = as.factor(Outcome)))+geom_smooth(method = 'lm', aes(x=NoOfContacts, y=CarInsurance))
+
+
+     
+```
+
+```{r}
+ggplot(data = Coldcalls)+geom_point(aes(x = Balance, y = CarInsurance))+geom_smooth(method = 'lm', aes(x=Balance, y=CarInsurance),fill=NA)
+
+
+```
+
+
+
+```{r}
+ggplot(data = Coldcalls)+geom_point(aes(x=HHInsurance, y = CarInsurance))+geom_smooth(method = 'lm', aes(x=HHInsurance, y=CarInsurance),fill=NA)
+```
+
+
+
+```{r}
+plot_bar(callsuccess$Job)
+```
+```{r}
+ggplot(data = Coldcalls)+geom_point(aes(x = PrevAttempts, y = CarInsurance, ))
+```
+
+$Carinsurance = \beta1+ \beta2* HHInsurance$
+$Carinsurance = \beta1+ \beta2* Carloan$
+$Carinsurance = \beta1+ \beta2* NoofContacyts$
+
+#MODELLING
+```{r}
+model_insurance=lm(CarInsurance~Balance, data = CallsNA)
+summary(model_insurance)
+```
+
+
+```{r}
+head(CallsNA)
+head(Coldcalls)
+summary(Coldcalls)
+
+require(tidyverse)
+library(hms)
+```
+
+```{r}
+CallsNA=CallsNA%>%mutate(Outcome=as.numeric(CarInsurance))    
+
+myproject_data=CallsNA%>%select(Balance, CallDuration, CarInsurance)
+```
+
+
+```{r}
+normalization<-function(x){
+  (x-min(x))/(max(x)-min(x))
+  }
+
+n.CallsNA=myproject_data%>%mutate_if(is.numeric, normalization)    ## mutate all the variables that are numerical all at once
+```
+
+```{r}
+n.CallsNA=n.CallsNA%>%mutate(id=row_number())   # we will use id to find data that is not selected for testing
+
+set.seed(1234) ## In order to get the same split everytime we run the random split
+train=n.CallsNA%>%sample_frac(size=.7)
+test=anti_join(n.CallsNA, train, by='id')
+
+
+## Creating training and testing vectors  (knn library expects vectors)
+training.label=train$CarInsurance
+testing.label=test$CarInsurance
+
+training.input=train%>%select( -CarInsurance, -id )    ## input variables are everything but the label variable or the id variable
+testing.input=test%>%select( -CarInsurance, -id )
+```
+
+
+```{r}
+#install.packages('class')
+require(class)
+set.seed(1234)
+predictions<-knn(train=training.input, test=testing.input, cl=training.label, k=16)
+```
+ 
+```{r}
+#library(base)
+data.frame(predictions,testing.label)
+
+
+
+```
+
+```{r}
+accuracy=sum(predictions== testing.label)/length(predictions)
+accuracy
+```
+
+
+```
+ 
+ 
